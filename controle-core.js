@@ -10,7 +10,7 @@
 // <script>. controle-core.js precisa carregar ANTES dos demais (é
 // quem declara o estado global: _processos, _user, FASES etc.).
 //
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ SESSÃÂÃÂO EXPIRADA: mensagem clara em vez de erro de parse ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// ── SESSÃO EXPIRADA: mensagem clara em vez de erro de parse ──────
 // Quando a sessão cai (ex.: reinício do servidor), as rotas protegidas
 // redirecionam pra /login (HTML) em vez de responder JSON. O código que
 // chama fetch(...).then(r=>r.json()) então quebra com um erro confuso tipo
@@ -93,6 +93,25 @@ let _editando = null; // processo sendo editado
 // só no que de fato editou). Agora só os campos realmente alterados nesta
 // sessão são enviados — os demais ficam intocados no banco.
 let _editandoOriginal = null;
+// ── Processo aberto no painel: um lugar só para trocar (24/10/2026) ──────
+// Antes, cada tela montava _editando/_editandoOriginal do seu jeito (11
+// lugares) e um esquecimento deixava os dois desencontrados — foi assim que
+// o UD26-099 virou processo duplicado. Use sempre estas três funções.
+function definirProcessoNoPainel(proc){
+  // Outro processo: as parcelas em memória são do anterior — recarrega.
+  if(typeof _parcelas !== 'undefined' && (!_editando || _editando.id !== proc.id)) _parcelas = [];
+  _editando = { ...proc, _camposIA: {} };
+  _editandoOriginal = { ...proc };
+}
+function iniciarProcessoNovoNoPainel(){
+  if(typeof _parcelas !== 'undefined') _parcelas = [];
+  _editando = { fase: 'PI', free_time: 21, _camposIA: {} };
+  _editandoOriginal = {};
+}
+function limparProcessoDoPainel(){
+  _editando = null;
+  _editandoOriginal = null;
+}
 // Processo (não cancelado) que já usa esta referência, ignorando maiúsculas e
 // espaços (23/10/2026, UD26-099 duplicado). O servidor confere de novo.
 function referenciaJaExiste(ref, ignorarId){
@@ -831,7 +850,7 @@ async function fecharProcesso(id){
     showToast('🔒 Processo fechado','ok');
     await carregarProcessos(true);
     const p = _processos.find(p=>p.id===id);
-    if(p){ _editando = {...p, _camposIA:{}}; _editandoOriginal = {...p}; renderModal(); }
+    if(p){ definirProcessoNoPainel(p); renderModal(); }
   } else showToast('Erro ao fechar: '+(d.erro||''),'err');
 }
 
@@ -846,7 +865,7 @@ async function reabrirProcesso(id){
     showToast('🔓 Processo reaberto','ok');
     await carregarProcessos(true);
     const p = _processos.find(p=>p.id===id);
-    if(p){ _editando = {...p, _camposIA:{}}; _editandoOriginal = {...p}; renderModal(); }
+    if(p){ definirProcessoNoPainel(p); renderModal(); }
   } else showToast('Erro ao reabrir: '+(d.erro||''),'err');
 }
 
@@ -877,7 +896,7 @@ async function cancelarProcesso(id){
     showToast(souGerente ? '🚫 Processo cancelado' : '📨 Solicitação de cancelamento enviada','ok');
     await carregarProcessos(true);
     const p = _processos.find(p=>p.id===id);
-    if(p){ _editando = {...p, _camposIA:{}}; _editandoOriginal = {...p}; renderModal(); }
+    if(p){ definirProcessoNoPainel(p); renderModal(); }
   } else showToast('Erro'+(d.erro?': '+d.erro:''),'err');
 }
 
@@ -892,7 +911,7 @@ async function aprovarCancelamento(id){
     showToast('✅ Cancelamento aprovado','ok');
     await carregarProcessos(true);
     const p = _processos.find(p=>p.id===id);
-    if(p){ _editando = {...p, _camposIA:{}}; _editandoOriginal = {...p}; renderModal(); }
+    if(p){ definirProcessoNoPainel(p); renderModal(); }
   } else showToast('Erro ao aprovar'+(d.erro?': '+d.erro:''),'err');
 }
 
@@ -907,7 +926,7 @@ async function rejeitarCancelamento(id){
     showToast('✖️ Solicitação de cancelamento rejeitada','ok');
     await carregarProcessos(true);
     const p = _processos.find(p=>p.id===id);
-    if(p){ _editando = {...p, _camposIA:{}}; _editandoOriginal = {...p}; renderModal(); }
+    if(p){ definirProcessoNoPainel(p); renderModal(); }
   } else showToast('Erro ao rejeitar'+(d.erro?': '+d.erro:''),'err');
 }
 
@@ -922,7 +941,7 @@ async function reverterCancelamento(id){
     showToast('↩️ Cancelamento revertido','ok');
     await carregarProcessos(true);
     const p = _processos.find(p=>p.id===id);
-    if(p){ _editando = {...p, _camposIA:{}}; _editandoOriginal = {...p}; renderModal(); }
+    if(p){ definirProcessoNoPainel(p); renderModal(); }
   } else showToast('Erro ao reverter'+(d.erro?': '+d.erro:''),'err');
 }
 
@@ -942,7 +961,7 @@ else showToast('Erro ao gerar follow-up: '+(d.erro||''),'err');
 }
 
 // ════════════════════════════════════════════════════════════════
-// CÃÂÃÂMBIO
+// CÂMBIO
 // ════════════════════════════════════════════════════════════════
 async function carregarCambio(){
   try{
@@ -1207,8 +1226,7 @@ async function _abrirProcessoPorReferencia(ref){
   const proc = _processos.find(p=>p.referencia===ref);
   if(!proc) return;
   await garantirProcessoCompleto(proc);
-  _editando = {...proc, _camposIA: {}};
-  _editandoOriginal = {...proc};
+  definirProcessoNoPainel(proc);
   renderModal();
 }
 
@@ -1221,7 +1239,8 @@ window.addEventListener('popstate', function(){
   if(ref){
     _abrirProcessoPorReferencia(ref);
   } else if(_editando){
-    _editando = null;
+    limparProcessoDoPainel();
+    _painelDirty = false;
     document.getElementById('modal-bg').classList.remove('open');
   }
 });
@@ -1396,7 +1415,7 @@ async function _salvarProcessoAgora(proc, patchFields){
   }
 
   // demurrage_pago agora é derivado automaticamente da Data de Pagamento da
-  // Demurrage (aba Demurrage) em vez de um dropdown Sim/NÃ£o editado Ã  mÃ£o
+  // Demurrage (aba Demurrage) em vez de um dropdown Sim/Não editado Ã  mão
   // (pedido Emanuelly 03/09/2026, junto com o desmembramento da aba).
   proc.demurrage_pago = !!proc.data_pagamento_demurrage;
 
@@ -1654,7 +1673,7 @@ async function validarFinalizacao(id, desfazer){
     showToast(desfazer ? 'Validação desfeita' : '✅ Processo validado e finalizado', 'ok');
     await carregarProcessos(true);
     const np = _processos.find(x => x.id === id);
-    if(np){ _editando = {...np, _camposIA:{}}; _editandoOriginal = {...np}; renderModal(); }
+    if(np){ definirProcessoNoPainel(np); renderModal(); }
     if(typeof atualizarResumoAgenda === 'function') atualizarResumoAgenda();
   } else showToast('Não foi possível validar: ' + (d.erro || ''), 'err', 6000);
 }
@@ -1668,7 +1687,7 @@ function calcularFase(p){
   // "Data Chegada", "Data Presença" e "Data de Embarque" só contam pra
   // avançar a fase se já aconteceram de fato. Se alguém preencher uma data
   // futura ali (comum quando o booking já traz uma previsão e a pessoa
-  // preenche no campo errado por hÃÂÃÂ¡bito), NÃÂÃÂO trata como jÃÂÃÂ¡ embarcado/
+  // preenche no campo errado por hábito), NÃO trata como já embarcado/
   // desembarcado — fica na fase anterior até a data realmente chegar. Use
   // os campos de previsão (ETD/ETA/Previsão Prontidão) pra isso — e na
   // prática o próprio formulário já move a data automaticamente pro campo
@@ -1725,7 +1744,7 @@ function calcularFase(p){
   // passou — conta como embarque de verdade.
   if(embarquePassado)                                               return 'EMBARCADO';
   // O status avança pra "Ag. Embarque" só com a Previsão de Embarque (ETD)
-  // preenchida ÃÂ¢ÃÂÃÂ NÃÂÃÂO mais com o NÃÂÃÂº Booking. Motivo: como o booking real
+  // preenchida — NÃO mais com o Nº Booking. Motivo: como o booking real
   // muitas vezes não chega a tempo, o time preenche esse campo com a
   // referência da Royal (não o booking de verdade), e o status mudava
   // prematuramente/erradamente por causa disso. O ETD é um dado mais

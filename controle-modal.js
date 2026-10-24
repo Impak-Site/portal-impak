@@ -1,13 +1,13 @@
 // controle-modal.js
 //
-// Painel lateral do processo: abrir/fechar, render das abas (timeline, alertas, conteÃÂÃÂºdo), histÃÂÃÂ³rico, arquivos GED, parametrizaÃÂÃÂ§ÃÂÃÂ£o, troca de aba, pagamento (PI).
+// Painel lateral do processo: abrir/fechar, render das abas (timeline, alertas, conteúdo), histórico, arquivos GED, parametrização, troca de aba, pagamento (PI).
 //
-// Parte do controle_v2.html, extraÃÂÃÂ­do do <script> ÃÂÃÂºnico original pra
-// facilitar manutenÃÂÃÂ§ÃÂÃÂ£o. Carregado via <script src> junto com os outros
-// mÃÂÃÂ³dulos (ver controle_v2.html) ÃÂ¢ÃÂÃÂ nÃÂÃÂ£o ÃÂÃÂ© um ES module, entÃÂÃÂ£o todo
-// estado (let/const de topo) e funÃÂÃÂ§ÃÂÃÂµes aqui continuam visÃÂÃÂ­veis pros
-// outros arquivos, exatamente como estavam quando tudo era um sÃÂÃÂ³
-// <script>. controle-core.js precisa carregar ANTES dos demais (ÃÂÃÂ©
+// Parte do controle_v2.html, extraído do <script> único original pra
+// facilitar manutenção. Carregado via <script src> junto com os outros
+// módulos (ver controle_v2.html) — não é um ES module, então todo
+// estado (let/const de topo) e funções aqui continuam visíveis pros
+// outros arquivos, exatamente como estavam quando tudo era um só
+// <script>. controle-core.js precisa carregar ANTES dos demais (é
 // quem declara o estado global: _processos, _user, FASES etc.).
 //
 // Whitelist de armadores (ocean carriers) conhecidos, para alertar quando o campo Armador
@@ -27,16 +27,15 @@ function verificarArmadorConhecido(el){
 }
 
 function abrirNovo(){
-  // _camposIA rastreia, NESTA sessÃÂÃÂ£o de ediÃÂÃÂ§ÃÂÃÂ£o, quais campos foram preenchidos
-  // pela ÃÂÃÂºltima leitura de IA (nÃÂÃÂ£o pelo usuÃÂÃÂ¡rio digitando) ÃÂ¢ÃÂÃÂ usado por
-  // extrairComIA() pra saber se pode corrigir um campo jÃÂÃÂ¡ preenchido quando
+  // _camposIA rastreia, NESTA sessão de edição, quais campos foram preenchidos
+  // pela última leitura de IA (não pelo usuário digitando) — usado por
+  // extrairComIA() pra saber se pode corrigir um campo já preenchido quando
   // um documento novo (ex: o certo, depois de um errado) trouxer outro valor.
-  // NÃÂÃÂ£o ÃÂÃÂ© salvo no banco (propositalmente prefixado com _, igual _fasePrevista
-  // e _savedAt jÃÂÃÂ¡ removidos antes do save) ÃÂ¢ÃÂÃÂ reseta a cada vez que o processo
-  // ÃÂÃÂ© reaberto, o que cobre o caso real relatado (corrigir dentro da mesma
-  // sessÃÂÃÂ£o de ediÃÂÃÂ§ÃÂÃÂ£o, logo apÃÂÃÂ³s perceber o documento errado).
-  _editando = { fase:'PI', free_time:21, _camposIA: {} };
-  _editandoOriginal = {};
+  // Não é salvo no banco (propositalmente prefixado com _, igual _fasePrevista
+  // e _savedAt já removidos antes do save) — reseta a cada vez que o processo
+  // é reaberto, o que cobre o caso real relatado (corrigir dentro da mesma
+  // sessão de edição, logo após perceber o documento errado).
+  iniciarProcessoNovoNoPainel();
   renderModal();
 }
 
@@ -44,11 +43,9 @@ async function abrirProcesso(id){
   const proc = _processos.find(p=>p.id===id);
   if(!proc) return;
   await garantirProcessoCompleto(proc);
-  _editando = {...proc, _camposIA: {}};
-    _parcelas = []; // task #340b: força recarregar parcelas do processo certo ao trocar de processo
-  _editandoOriginal = {...proc};
+  definirProcessoNoPainel(proc); // zera as parcelas em memória ao trocar de processo (task #340b)
   renderModal();
-  // URL por processo (task #59) ÃÂ¢ÃÂÃÂ deep link/bookmark + botÃÂÃÂ£o voltar do navegador
+  // URL por processo (task #59) — deep link/bookmark + botão voltar do navegador
   const novaUrl = _baseUrlPath.replace(/\/$/,'') + '/' + encodeURIComponent(proc.referencia);
   if(location.pathname !== novaUrl) history.pushState({processoId:proc.id}, '', novaUrl);
 }
@@ -65,19 +62,18 @@ function copiarReferencia(){
 
 function fecharModal(){
   if(typeof fecharDRE === 'function') fecharDRE(); // DRE fica no <body>; fecha junto com o painel
-  _editando = null;
-  _editandoOriginal = null; // 23/10/2026: não sobra o "original" de um processo fechado para a próxima gravação
+  limparProcessoDoPainel(); // 23/10/2026: não sobra o "original" de um processo fechado para a próxima gravação
   _painelDirty = false;
   document.getElementById('modal-bg').classList.remove('open');
-  // Volta a URL pra tela de baixo (/controle ou /financeiro) sem recarregar a pÃÂÃÂ¡gina.
+  // Volta a URL pra tela de baixo (/controle ou /financeiro) sem recarregar a página.
   if(location.pathname !== _baseUrlPath) history.pushState(null, '', _baseUrlPath);
 }
 
-// Se o usuÃÂÃÂ¡rio editar manualmente um campo que a IA tinha preenchido antes,
-// esse campo "vira dele" ÃÂ¢ÃÂÃÂ deixa de poder ser sobrescrito automaticamente por
-// uma leitura de IA seguinte, protegendo a correÃÂÃÂ§ÃÂÃÂ£o manual do usuÃÂÃÂ¡rio. SÃÂÃÂ³
-// reage a eventos reais do teclado/mouse: setar .value via JS (como a prÃÂÃÂ³pria
-// extraÃÂÃÂ§ÃÂÃÂ£o faz) nÃÂÃÂ£o dispara 'input', entÃÂÃÂ£o isso nunca conflita com a IA.
+// Se o usuário editar manualmente um campo que a IA tinha preenchido antes,
+// esse campo "vira dele" — deixa de poder ser sobrescrito automaticamente por
+// uma leitura de IA seguinte, protegendo a correção manual do usuário. Só
+// reage a eventos reais do teclado/mouse: setar .value via JS (como a própria
+// extração faz) não dispara 'input', então isso nunca conflita com a IA.
 document.addEventListener('input', function(e){
   if(!_editando || !_editando._camposIA) return;
   const id = e.target && e.target.id;
@@ -86,9 +82,9 @@ document.addEventListener('input', function(e){
   if(_editando._camposIA[campo]) delete _editando._camposIA[campo];
 });
 
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
-// MODAL ÃÂ¢ÃÂÃÂ RENDER
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// ════════════════════════════════════════════════════════════════
+// MODAL — RENDER
+// ════════════════════════════════════════════════════════════════
 function renderModal(){
   const p = _editando;
   const isNovo = !p.id;
@@ -113,7 +109,7 @@ function renderModal(){
   document.getElementById('modal-bg').classList.add('open');
 
 
-  // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ ABAS ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+  // ── ABAS ──
   const TABS = [
     {id:'identificacao', label:'📄 Identificação'},
     {id:'financeiro',    label:'💰 Financeiro'},
@@ -165,26 +161,26 @@ function renderModal(){
       </div>`;
   }).join('');
 
-  // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ ALERTAS ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+  // ── ALERTAS ──
   const alertas = verificarAlertas(p, false);
   const alertasHtml = alertas.map(a=>
     `<div style="padding:8px 12px;background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.2);border-radius:8px;font-size:12px;color:var(--err);margin-bottom:8px;font-weight:600;">🚨 ${esc(a.titulo)}: ${esc(a.mensagem)}</div>`
   ).join('');
 
-  // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ CONTEÃÂÃÂDO DAS ABAS ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+  // ── CONTEÚDO DAS ABAS ──
   const finInfo = p.pi_pagamento ? renderPagamentoInfo(p) : '';
 
-  // ConfirmaÃÂÃÂ§ÃÂÃÂ£o visual demurrage (calculada dinamicamente ÃÂ¢ÃÂÃÂ ver renderDemurInfo)
+  // Confirmação visual demurrage (calculada dinamicamente — ver renderDemurInfo)
   let demurInfo = renderDemurInfo(p);
 
   // Confirmação visual armazenagem (calculada dinamicamente — ver renderArmazenInfo)
   let armazenInfo = renderArmazenInfo(p);
 
-  // ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ TRAVA DE PROCESSO ("Fechar Processo") ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
-  // Quando fechado, o conteÃÂÃÂºdo do modal fica visualmente desabilitado
-  // (opacity + pointer-events:none) dentro do wrapper abaixo ÃÂ¢ÃÂÃÂ a validaÃÂÃÂ§ÃÂÃÂ£o
-  // que de fato impede a ediÃÂÃÂ§ÃÂÃÂ£o ÃÂÃÂ© no servidor (ver server.js: POST /api/
-  // controle/v2/processo), isto aqui ÃÂÃÂ© sÃÂÃÂ³ pra nÃÂÃÂ£o deixar o usuÃÂÃÂ¡rio tentar
+  // ── TRAVA DE PROCESSO ("Fechar Processo") ────────────────────────
+  // Quando fechado, o conteúdo do modal fica visualmente desabilitado
+  // (opacity + pointer-events:none) dentro do wrapper abaixo — a validação
+  // que de fato impede a edição é no servidor (ver server.js: POST /api/
+  // controle/v2/processo), isto aqui é só pra não deixar o usuário tentar
   // editar um processo travado sem perceber.
   const bloqueado = !!p.fechado;
   const podeDestravar = _user && _user.role === 'gerente';
@@ -794,12 +790,12 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
       <div class="form-section">
         <div class="form-section-title">🧾 Faturamento</div>
         ${(() => {
-          // Ambiguidade NF SaÃÂÃÂ­da legada ÃÂÃÂ aba Vendas: quando o processo jÃÂÃÂ¡
+          // Ambiguidade NF Saída legada × aba Vendas: quando o processo já
           // tem vendas cadastradas (multi-cliente), calcularFechamento()
           // ignora nf_saida_numero/data/valor por completo e usa a soma das
-          // NFs de cada venda ÃÂ¢ÃÂÃÂ sem este aviso, alguÃÂÃÂ©m podia preencher os
-          // dois lugares achando que os dois contam, ou nÃÂÃÂ£o entender por que
-          // editar este campo aqui nÃÂÃÂ£o muda o Lucro Real na aba Fechamento.
+          // NFs de cada venda — sem este aviso, alguém podia preencher os
+          // dois lugares achando que os dois contam, ou não entender por que
+          // editar este campo aqui não muda o Lucro Real na aba Fechamento.
           let vendas = [];
           try{ vendas = p.vendas_json ? JSON.parse(p.vendas_json) : []; }catch(e){ vendas = []; }
           if(!Array.isArray(vendas)) vendas = [];
@@ -902,14 +898,14 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
   }catch(e){ _containers = [{numero:'', tipo:'40HC', lacre:''}]; }
   if(typeof reiniciarModoDemurrage === 'function') reiniciarModoDemurrage(); // painel novo: ainda não houve troca 1 <-> 2+ containers
   renderMultiContainers();
-  // Inicializar multi-produtos (com retrocompatibilidade do campo "produto" legado em texto ÃÂÃÂºnico)
+  // Inicializar multi-produtos (com retrocompatibilidade do campo "produto" legado em texto único)
   try{
     if(p.produtos_json) _produtos = JSON.parse(p.produtos_json);
     else if(p.produto) _produtos = [{descricao:p.produto||'', quantidade:''}];
     else _produtos = [{descricao:'', quantidade:''}];
   }catch(e){ _produtos = [{descricao:'', quantidade:''}]; }
   renderMultiProdutos();
-  // Inicializar vendas multi-cliente (aba Vendas) ÃÂ¢ÃÂÃÂ vazio ([]) pra qualquer
+  // Inicializar vendas multi-cliente (aba Vendas) — vazio ([]) pra qualquer
   // processo que nunca usou essa aba, exatamente como _produtos/_containers acima.
   try{
     _vendas = p.vendas_json ? JSON.parse(p.vendas_json) : [];
@@ -923,16 +919,16 @@ oninput="autocompletarContato(this,'CLIENTE,FORNECEDOR','notify-dropdown')">
   if(!isNovo) carregarVinculoCotacao(p);
 }
 
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
-// CUSTOS REAIS ÃÂ¢ÃÂÃÂ apuraÃÂÃÂ§ÃÂÃÂ£o de lucro por processo, item a item
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
-// Config/cÃÂÃÂ¡lculo (CUSTOS_REAIS_CONFIG, calcularCustoCotadoItem,
-// calcularCustoRealTotal) vivem em controle-core.js ÃÂ¢ÃÂÃÂ aqui sÃÂÃÂ³ o HTML da aba
-// e a coleta/salvamento dos campos, seguindo o mesmo padrÃÂÃÂ£o de "aba com
-// botÃÂÃÂ£o de salvar prÃÂÃÂ³prio" que a aba Fechamento jÃÂÃÂ¡ usa (ela sÃÂÃÂ³ lÃÂÃÂª, nÃÂÃÂ£o tem
-// campo editÃÂÃÂ¡vel; esta aba tem campos, entÃÂÃÂ£o precisa de coletar+salvar).
-// Uma cÃÂÃÂ©lula "valor + moeda" (input number + select BRL/USD/EUR lado a
-// lado) ÃÂ¢ÃÂÃÂ usada tanto pro Pago quanto pro Cobrado, tanto na linha principal
+// ════════════════════════════════════════════════════════════════
+// CUSTOS REAIS — apuração de lucro por processo, item a item
+// ════════════════════════════════════════════════════════════════
+// Config/cálculo (CUSTOS_REAIS_CONFIG, calcularCustoCotadoItem,
+// calcularCustoRealTotal) vivem em controle-core.js — aqui só o HTML da aba
+// e a coleta/salvamento dos campos, seguindo o mesmo padrão de "aba com
+// botão de salvar próprio" que a aba Fechamento já usa (ela só lê, não tem
+// campo editável; esta aba tem campos, então precisa de coletar+salvar).
+// Uma célula "valor + moeda" (input number + select BRL/USD/EUR lado a
+// lado) — usada tanto pro Pago quanto pro Cobrado, tanto na linha principal
 // quanto em cada sub-linha de container, sempre com o mesmo par de ids
 // (valorId/moedaId) montado pelo chamador.
 // ══════════════════════════════════════════════════════════════════════
@@ -2376,11 +2372,11 @@ async function salvarCustosReaisTab(){
   if(ok) atualizarTotalCustosReais();
 }
 
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
-// HISTÃÂÃÂRICO ÃÂ¢ÃÂÃÂ AUDITORIA DE ALTERAÃÂÃÂÃÂÃÂES
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// ════════════════════════════════════════════════════════════════
+// HISTÓRICO — AUDITORIA DE ALTERAÇÕES
+// ════════════════════════════════════════════════════════════════
 // Marcador usado no campo "campo" de uma entrada de log pra indicar que ela
-// nÃÂÃÂ£o ÃÂÃÂ© uma alteraÃÂÃÂ§ÃÂÃÂ£o normal de campo, e sim o registro de "a IA leu este
+// não é uma alteração normal de campo, e sim o registro de "a IA leu este
 // documento e preencheu estes campos" (ver extrairComIA() e o render abaixo).
 // Etiquetas manuais (pedido Ayslan 17/09/2026, substituindo as cores da
 // planilha da Paula) — hoje só existe uma: "cliente pediu outro agente de
@@ -2474,9 +2470,9 @@ async function carregarHistorico(processoId){
   }
 }
 
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
-// GED ÃÂ¢ÃÂÃÂ UPLOAD E GESTÃÂÃÂO DE ARQUIVOS DO PROCESSO
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// ════════════════════════════════════════════════════════════════
+// GED — UPLOAD E GESTÃO DE ARQUIVOS DO PROCESSO
+// ════════════════════════════════════════════════════════════════
 async function carregarArquivosGed(processoId){
   const lista = document.getElementById('ged-lista-arquivos');
   if(!lista) return;
@@ -2591,15 +2587,15 @@ async function excluirArquivoGed(arquivoId, processoId){
   }catch(e){ showToast('Erro ao excluir','err'); }
 }
 
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
-// ATUALIZAÃÂÃÂÃÂÃÂO AUTOMÃÂÃÂTICA DE FASE EM TEMPO REAL
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// ════════════════════════════════════════════════════════════════
+// ATUALIZAÇÃO AUTOMÁTICA DE FASE EM TEMPO REAL
+// ════════════════════════════════════════════════════════════════
 
-// Quando o canal sai VERDE, nÃÂÃÂ£o hÃÂÃÂ¡ etapa de conferÃÂÃÂªncia separada ÃÂ¢ÃÂÃÂ a
-// parametrizaÃÂÃÂ§ÃÂÃÂ£o ocorre na mesma data do registro da DI. SÃÂÃÂ³ preenche
-// automaticamente se o campo ainda estiver vazio, para nÃÂÃÂ£o sobrescrever
-// uma data de parametrizaÃÂÃÂ§ÃÂÃÂ£o jÃÂÃÂ¡ informada manualmente (ex: Amarelo/Vermelho
-// que depois virou Verde apÃÂÃÂ³s reanÃÂÃÂ¡lise, mas jÃÂÃÂ¡ tinha data prÃÂÃÂ³pria).
+// Quando o canal sai VERDE, não há etapa de conferência separada — a
+// parametrização ocorre na mesma data do registro da DI. Só preenche
+// automaticamente se o campo ainda estiver vazio, para não sobrescrever
+// uma data de parametrização já informada manualmente (ex: Amarelo/Vermelho
+// que depois virou Verde após reanálise, mas já tinha data própria).
 function aplicarRegraParametrizacaoVerde(){
   const canalEl = document.getElementById('f_canal');
   const paramEl = document.getElementById('f_data_parametrizacao');
@@ -2610,17 +2606,17 @@ function aplicarRegraParametrizacaoVerde(){
   }
 }
 
-// Datas "efetivas" (Data de Embarque, Data Chegada, Data ProntidÃÂÃÂ£o Real)
-// registram algo que JÃÂÃÂ ACONTECEU. Se alguÃÂÃÂ©m digitar ali uma data no
-// FUTURO ÃÂ¢ÃÂÃÂ muito comum: o booking chega com uma previsÃÂÃÂ£o e a pessoa
-// preenche direto no campo "de verdade" por hÃÂÃÂ¡bito, sem notar que existe um
-// campo de previsÃÂÃÂ£o separado ÃÂ¢ÃÂÃÂ isso quase sempre ÃÂÃÂ© engano. Em vez de sÃÂÃÂ³
-// avisar (como este arquivo fazia antes, sÃÂÃÂ³ pra Data Chegada), move o valor
-// automaticamente pro campo de previsÃÂÃÂ£o correspondente (ETD/ETA/PrevisÃÂÃÂ£o
-// ProntidÃÂÃÂ£o) e limpa o campo efetivo, porque por definiÃÂÃÂ§ÃÂÃÂ£o ele nÃÂÃÂ£o pode ter
-// uma data que ainda nÃÂÃÂ£o aconteceu. Isso evita o processo aparecer como "jÃÂÃÂ¡
-// embarcado" ou "jÃÂÃÂ¡ chegou" antes da hora sÃÂÃÂ³ por causa do campo errado ÃÂ¢ÃÂÃÂ
-// consistente com a 2ÃÂÃÂª camada de proteÃÂÃÂ§ÃÂÃÂ£o que jÃÂÃÂ¡ existe em calcularFase().
+// Datas "efetivas" (Data de Embarque, Data Chegada, Data Prontidão Real)
+// registram algo que JÁ ACONTECEU. Se alguém digitar ali uma data no
+// FUTURO — muito comum: o booking chega com uma previsão e a pessoa
+// preenche direto no campo "de verdade" por hábito, sem notar que existe um
+// campo de previsão separado — isso quase sempre é engano. Em vez de só
+// avisar (como este arquivo fazia antes, só pra Data Chegada), move o valor
+// automaticamente pro campo de previsão correspondente (ETD/ETA/Previsão
+// Prontidão) e limpa o campo efetivo, porque por definição ele não pode ter
+// uma data que ainda não aconteceu. Isso evita o processo aparecer como "já
+// embarcado" ou "já chegou" antes da hora só por causa do campo errado —
+// consistente com a 2ª camada de proteção que já existe em calcularFase().
 function moverDataFuturaParaPrevisao(idEfetivo, idPrevisao, labelPrevisao){
   const elEfetivo = document.getElementById(idEfetivo);
   const elPrevisao = document.getElementById(idPrevisao);
@@ -2662,7 +2658,7 @@ function atualizarFaseEmTempoReal(){
     const val = el.value?.trim()||null;
     snapshot[campo] = val||null;
   });
-  // demurrage_valor usa mÃÂÃÂ¡scara monetÃÂÃÂ¡ria ÃÂ¢ÃÂÃÂ nÃÂÃÂ£o pode ser lido como texto puro
+  // demurrage_valor usa máscara monetária — não pode ser lido como texto puro
   const valorDemurAtual = valorMoeda('f_demurrage_valor');
   if(valorDemurAtual!=null) snapshot.demurrage_valor = valorDemurAtual;
 
@@ -2682,12 +2678,12 @@ function atualizarFaseEmTempoReal(){
     badge.innerHTML = `<span class="fase-badge fase-${fase.id}">${fase.icon} ${fase.label}</span>`;
   }
 
-  // Atualizar _editando.fase para que ao salvar jÃÂÃÂ¡ venha correto
+  // Atualizar _editando.fase para que ao salvar já venha correto
   _editando._fasePrevista = novaFase;
 
-  // Recalcular e redesenhar o bloco "CÃÂÃÂ¡lculo do Demurrage" com os valores
-  // atuais do formulÃÂÃÂ¡rio ÃÂ¢ÃÂÃÂ antes este bloco sÃÂÃÂ³ era montado uma vez, ao abrir
-  // o modal, e ficava com dados desatualizados ao editar Data DevoluÃÂÃÂ§ÃÂÃÂ£o etc.
+  // Recalcular e redesenhar o bloco "Cálculo do Demurrage" com os valores
+  // atuais do formulário — antes este bloco só era montado uma vez, ao abrir
+  // o modal, e ficava com dados desatualizados ao editar Data Devolução etc.
   const demurWrap = document.getElementById('demur-info-wrap');
   if(demurWrap) demurWrap.innerHTML = renderDemurInfo(snapshot);
 
@@ -2740,9 +2736,9 @@ function atualizarFechamentoAoVivo(){
   catch(e) { console.warn('Fechamento: não deu para atualizar o quadro', e); }
 }
 
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// ════════════════════════════════════════════════════════════════
 // PAGAMENTO
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// ════════════════════════════════════════════════════════════════
 function renderPagamentoCampos(){
   const tipo = document.getElementById('f_pi_pagamento')?.value;
   const p = _editando || {};
@@ -2791,10 +2787,10 @@ function renderPagamentoCampos(){
       <input class="form-input" type="number" step="0.0001" id="f_pi_cambio_saldo" value="${p.pi_cambio_saldo||''}" placeholder="${placeholderCambio('USD', 4)}" oninput="renderPagamentoInfoLive()"></div>`;
   } else if(tipo==='PARCELADO'){
     // Recarrega _parcelas a partir do processo sempre que o form entra em
-    // modo Parcelado (troca de tipo de pagamento ou abertura do modal) ÃÂ¢ÃÂÃÂ
-    // mesmo padrÃÂÃÂ£o de _vendas/_containers: estado vive numa variÃÂÃÂ¡vel global
-    // porque as linhas sÃÂÃÂ£o adicionadas/removidas dinamicamente (sem isso nÃÂÃÂ£o
-    // dÃÂÃÂ¡ pra ter "quantas parcelas forem necessÃÂÃÂ¡rias" com um botÃÂÃÂ£o +).
+    // modo Parcelado (troca de tipo de pagamento ou abertura do modal) —
+    // mesmo padrão de _vendas/_containers: estado vive numa variável global
+    // porque as linhas são adicionadas/removidas dinamicamente (sem isso não
+    // dá pra ter "quantas parcelas forem necessárias" com um botão +).
     if(!Array.isArray(_parcelas) || !_parcelas.length){
         try{ _parcelas = p.pi_parcelas_json ? JSON.parse(p.pi_parcelas_json) : []; }catch(e){ _parcelas = []; }
     if(!Array.isArray(_parcelas) || !_parcelas.length) _parcelas = [{...parcelaVazia(), label:'Inicial'}, {...parcelaVazia(), label:'Final'}];
@@ -2817,7 +2813,7 @@ function renderPagamentoCampos(){
   }
   html+='</div>';
   el.innerHTML=html;
-  // #parcelas-list sÃÂÃÂ³ existe no DOM depois do innerHTML acima ÃÂ¢ÃÂÃÂ preencher aqui.
+  // #parcelas-list só existe no DOM depois do innerHTML acima — preencher aqui.
   if(tipo==='PARCELADO'){ renderParcelas(); atualizarVencimentoSaldoPorETA(); }
 }
 
@@ -2837,12 +2833,12 @@ function calcularVencDIPagamentoUnico(){
 }
 
 // Forma "100% a Prazo": provisiona a Data Pagamento automaticamente como
-// Data PI + Prazo (dias), pra nÃÂÃÂ£o depender do usuÃÂÃÂ¡rio calcular/lembrar de
-// preencher na mÃÂÃÂ£o ÃÂ¢ÃÂÃÂ e sem isso o pagamento nem entrava no Dashboard
+// Data PI + Prazo (dias), pra não depender do usuário calcular/lembrar de
+// preencher na mão — e sem isso o pagamento nem entrava no Dashboard
 // Financeiro (listarPagamentosPI usa pi_data_saldo como vencimento pro
-// "Saldo a pagar"). Roda a cada ediÃÂÃÂ§ÃÂÃÂ£o da Data PI ou do Prazo; se o usuÃÂÃÂ¡rio
+// "Saldo a pagar"). Roda a cada edição da Data PI ou do Prazo; se o usuário
 // mudar a Data Pagamento manualmente depois, prevalece o valor calculado na
-// ÃÂÃÂºltima ediÃÂÃÂ§ÃÂÃÂ£o de Data PI/Prazo (mesmo comportamento de "provisionar", nÃÂÃÂ£o
+// última edição de Data PI/Prazo (mesmo comportamento de "provisionar", não
 // de travar o campo).
 // Sempre que a forma de pagamento for "100% a Prazo" ou "Parcelado"
 // (parcela Final), preenche o vencimento do saldo a pagar como ETA
@@ -2906,21 +2902,21 @@ function atualizarDataPagamentoPrazo(){
   renderPagamentoInfoLive();
 }
 
-// Recalcula e redesenha o resumo de pagamento (pagamento-box) quando o usuÃÂÃÂ¡rio
-// edita % de entrada ou os cÃÂÃÂ¢mbios, sem precisar salvar/reabrir o modal.
+// Recalcula e redesenha o resumo de pagamento (pagamento-box) quando o usuário
+// edita % de entrada ou os câmbios, sem precisar salvar/reabrir o modal.
 function renderPagamentoInfoLive(){
   if(!_editando) return;
   const snapshot = {..._editando};
-  // BUG #340 ÃÂ¢ÃÂÃÂ snapshot herdava pi_pagamento de _editando (o valor salvo no
+  // BUG #340 — snapshot herdava pi_pagamento de _editando (o valor salvo no
   // banco), nunca do <select> na tela. Resultado: trocar a Forma de
-  // Pagamento (ex.: ENTRADA_SALDO salvo ÃÂ¢ÃÂÃÂ escolher PARCELADO) e digitar
-  // qualquer cÃÂÃÂ¢mbio disparava este redraw usando o tipo ANTIGO, entÃÂÃÂ£o o
-  // resumo (pagamento-box) mostrava "Entrada + Saldo (legado)" de novo ÃÂ¢ÃÂÃÂ o
-  // usuÃÂÃÂ¡rio via isso como "o formulÃÂÃÂ¡rio reverteu sozinho", mesmo com o
-  // <select> e as parcelas continuando corretos por trÃÂÃÂ¡s. _editando.pi_pagamento
-  // sÃÂÃÂ³ ÃÂÃÂ© atualizado de fato no Salvar (coletarESalvar), entÃÂÃÂ£o tem que ler o
-  // tipo atual direto do DOM aqui tambÃÂÃÂ©m, nÃÂÃÂ£o sÃÂÃÂ³ pra decidir se anexa
-  // pi_parcelas_json (como jÃÂÃÂ¡ fazia abaixo).
+  // Pagamento (ex.: ENTRADA_SALDO salvo → escolher PARCELADO) e digitar
+  // qualquer câmbio disparava este redraw usando o tipo ANTIGO, então o
+  // resumo (pagamento-box) mostrava "Entrada + Saldo (legado)" de novo — o
+  // usuário via isso como "o formulário reverteu sozinho", mesmo com o
+  // <select> e as parcelas continuando corretos por trás. _editando.pi_pagamento
+  // só é atualizado de fato no Salvar (coletarESalvar), então tem que ler o
+  // tipo atual direto do DOM aqui também, não só pra decidir se anexa
+  // pi_parcelas_json (como já fazia abaixo).
   const tipoAtual = document.getElementById('f_pi_pagamento')?.value;
   if(tipoAtual) snapshot.pi_pagamento = tipoAtual;
   const prazo = document.getElementById('f_pi_prazo_dias')?.value;
@@ -2931,7 +2927,7 @@ function renderPagamentoInfoLive(){
   const cs = parseFloat(document.getElementById('f_pi_cambio_saldo')?.value) || null;
   if(ce!=null) snapshot.pi_cambio_entrada = ce;
   if(cs!=null) snapshot.pi_cambio_saldo = cs;
-  // Parcelado: usa o array em memÃÂÃÂ³ria (ainda nÃÂÃÂ£o salvo) pra refletir ao vivo
+  // Parcelado: usa o array em memória (ainda não salvo) pra refletir ao vivo
   // toda linha adicionada/editada/removida, igual ao resto do resumo.
   if(tipoAtual==='PARCELADO') snapshot.pi_parcelas_json = JSON.stringify(_parcelas);
   // Valor da CI ao vivo (05/10/2026): no Parcelado o aviso de soma compara
@@ -2982,9 +2978,9 @@ function renderPagamentoInfo(p){
       rows += `<div class="pagamento-row"><span>${esc(pc.label)||('Parcela '+(i+1))} · câmbio ${c.toLocaleString('pt-BR',{minimumFractionDigits:4})}${venc}</span><span>USD ${v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} · R$ ${brlPc.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>`;
     });
     rows += `<div class="pagamento-row"><span>Total (${parcelas.length} parcela${parcelas.length===1?'':'s'})</span><span>USD ${totalUsd.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} · R$ ${totalBrl.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>`;
-    // Como cada parcela usa valor fixo em USD (nÃÂÃÂ£o %), nÃÂÃÂ£o hÃÂÃÂ¡ garantia
-    // automÃÂÃÂ¡tica de que a soma bate com o Valor USD da PI ÃÂ¢ÃÂÃÂ sinalizar em vez
-    // de deixar passar batido (percentual, ao contrÃÂÃÂ¡rio, sempre soma 100%).
+    // Como cada parcela usa valor fixo em USD (não %), não há garantia
+    // automática de que a soma bate com o Valor USD da PI — sinalizar em vez
+    // de deixar passar batido (percentual, ao contrário, sempre soma 100%).
     // Base do saldo = CI quando existir (05/10/2026 — ver baseTotalParcelas
     // em controle-campos.js); sem CI, a PI.
     const ciVal = parseFloat(p.ci_valor_usd) || 0;
@@ -2997,9 +2993,9 @@ function renderPagamentoInfo(p){
   return `<div class="pagamento-box" style="margin-top:12px;">${rows}</div>`;
 }
 
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// ════════════════════════════════════════════════════════════════
 // COLETAR E SALVAR
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// ════════════════════════════════════════════════════════════════
 function marcarPendenciaRevisada(){
   const el = document.getElementById('f_pendencia_revisao');
   if(el) el.value = '';
@@ -3010,9 +3006,9 @@ function marcarPendenciaRevisada(){
 }
 
 
-// BotÃÂÃÂ£o "Vincular ao Calculador" (item e) ÃÂ¢ÃÂÃÂ abre o Calculador em uma nova
-// aba, jÃÂÃÂ¡ preenchendo o wizard com os dados deste processo, pra gerar uma
-// cotaÃÂÃÂ§ÃÂÃÂ£o (estimativa) de um processo que comeÃÂÃÂ§ou direto no Controle.
+// Botão "Vincular ao Calculador" (item e) — abre o Calculador em uma nova
+// aba, já preenchendo o wizard com os dados deste processo, pra gerar uma
+// cotação (estimativa) de um processo que começou direto no Controle.
 // ── Cotação vinculada ao processo (aba Custos Reais) ──────────────────────
 // Regra única do vínculo cotação ↔ processo: lib/vinculo-cotacao.js (no
 // servidor). Um processo tem uma cotação: a estimativa dela é o "cotado" do
@@ -3078,7 +3074,7 @@ async function recarregarProcessoAposVinculo(id){
     const p = _processos.find(x => x.id === id);
     if(p){
       if(typeof garantirProcessoCompleto === 'function') await garantirProcessoCompleto(p);
-      _editando = { ...p, _camposIA: {} }; _editandoOriginal = { ...p };
+      definirProcessoNoPainel(p);
       renderModal();
       if(typeof trocarAba === 'function') trocarAba('custosreais');
     }

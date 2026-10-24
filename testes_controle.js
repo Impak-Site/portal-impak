@@ -715,6 +715,25 @@ vm.runInContext("_user = {usuario:'teste'}; _cambio = {USD:5.5};", sandbox);
 let _painelAbertoTeste = true;
 sandbox.document.getElementById('modal-bg').classList.contains = (c) => c === 'open' && _painelAbertoTeste;
 
+// ── Processo aberto no painel: definir/limpar num lugar só (24/10/2026) ──
+await testeAsync('definirProcessoNoPainel: cópias independentes, _camposIA novo e parcelas zeradas só ao trocar de processo', async () => {
+  try {
+    vm.runInContext(`limparProcessoDoPainel(); _parcelas = [{ label: 'X' }];
+      definirProcessoNoPainel({ id: 'teste-p1', referencia: 'TESTE-P1' });`, sandbox);
+    iguais(vm.runInContext('_parcelas.length', sandbox), 0, 'abriu outro processo: parcelas zeradas');
+    iguais(vm.runInContext('_editando !== _editandoOriginal && _editando.id === _editandoOriginal.id', sandbox), true);
+    iguais(vm.runInContext('JSON.stringify(_editando._camposIA)', sandbox), '{}');
+    vm.runInContext(`_parcelas = [{ label: 'Y' }]; definirProcessoNoPainel({ id: 'teste-p1', referencia: 'TESTE-P1' });`, sandbox);
+    iguais(vm.runInContext('_parcelas.length', sandbox), 1, 'mesmo processo recarregado: parcelas ficam');
+    vm.runInContext('iniciarProcessoNovoNoPainel();', sandbox);
+    iguais(vm.runInContext('!_editando.id && _editando.fase === "PI" && Object.keys(_editandoOriginal).length === 0 && _parcelas.length === 0', sandbox), true, 'processo novo');
+    vm.runInContext('limparProcessoDoPainel();', sandbox);
+    iguais(vm.runInContext('_editando === null && _editandoOriginal === null', sandbox), true, 'limpo');
+  } finally {
+    vm.runInContext('limparProcessoDoPainel(); _parcelas = [];', sandbox);
+  }
+});
+
 // ── Processo duplicado ao fechar o painel (23/10/2026) — valores fictícios ──
 await testeAsync('coletarESalvar com o painel FECHADO (ex.: leitura automática terminando depois) não grava nem cria processo novo', async () => {
   const salvarOriginal = sandbox.salvarProcesso;
