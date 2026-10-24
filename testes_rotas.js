@@ -47,6 +47,31 @@ function iguais(a, b, msg){ if (a !== b) throw new Error((msg ? msg + ' — ' : 
       iguais(r.status, 401, rota);
     });
   }
+  for (const rota of ['/api/admin/dropbox/status', '/api/admin/dropbox/conectar', '/api/admin/dropbox/callback']) {
+    await teste(`GET ${rota} sem sessão → 401 (lib/jobs-backup.js)`, async () => {
+      const r = await request(app).get(rota);
+      iguais(r.status, 401, rota);
+    });
+  }
+  await teste('POST /api/admin/dropbox/rodar sem sessão → 401 (lib/jobs-backup.js)', async () => {
+    const r = await request(app).post('/api/admin/dropbox/rodar').send({});
+    iguais(r.status, 401);
+  });
+  await teste('GET /backup sem sessão → vai para o login (lib/jobs-backup.js)', async () => {
+    const r = await request(app).get('/backup');
+    iguais(r.status, 302);
+    verdadeiroRota(/\/login\?destino=\/backup/.test(r.headers.location || ''), r.headers.location);
+  });
+  await teste('lib/jobs-backup.js: registrar() devolve os agendadores e registra as rotas', async () => {
+    const rotas = [];
+    const appFalso = { get: (c) => rotas.push('GET ' + c), post: (c) => rotas.push('POST ' + c) };
+    const r = require('./lib/jobs-backup.js').registrar(appFalso, new Proxy({ auth: () => () => {}, ADMINS_PERMISSOES: [] },
+      { get: (t, k) => (k in t ? t[k] : () => '') }));
+    iguais(typeof r.agendarBackupSemanal, 'function');
+    iguais(typeof r.agendarBackupDropbox, 'function');
+    ['POST /api/admin/backup', 'GET /backup', 'GET /api/admin/dropbox/status', 'POST /api/admin/dropbox/rodar']
+      .forEach(x => verdadeiroRota(rotas.includes(x), x + ' — ' + rotas.join(', ')));
+  });
   await teste('lib/jobs-email.js: registrar() devolve as funções que o server.js usa', async () => {
     const rotas = [];
     const appFalso = { get: (c) => rotas.push('GET ' + c), post: (c) => rotas.push('POST ' + c) };
