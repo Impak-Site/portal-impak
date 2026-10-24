@@ -62,6 +62,31 @@ function iguais(a, b, msg){ if (a !== b) throw new Error((msg ? msg + ' — ' : 
     iguais(r.status, 302);
     verdadeiroRota(/\/login\?destino=\/backup/.test(r.headers.location || ''), r.headers.location);
   });
+  for (const [metodo, rota] of [['get', '/api/fin/cadastros'], ['post', '/api/fin/contas'], ['post', '/api/fin/recorrencias/gerar'],
+    ['post', '/api/faturas/baixa-lote'], ['post', '/api/faturas/abc/baixa'], ['post', '/api/faturas/abc/estornar'], ['get', '/api/faturas/abc/arquivo'],
+    ['post', '/api/faturas/ler-documento'], ['post', '/api/faturas/importar'], ['get', '/api/faturas/receber-pendentes']]) {
+    await teste(`${metodo.toUpperCase()} ${rota} sem sessão → 401 (lib/rotas-faturas.js)`, async () => {
+      const r = await request(app)[metodo](rota).send({});
+      iguais(r.status, 401, rota);
+    });
+  }
+  await teste('GET /faturas sem sessão → vai para o login (lib/rotas-faturas.js)', async () => {
+    const r = await request(app).get('/faturas');
+    verdadeiroRota(r.status === 302 || r.status === 401, 'status ' + r.status);
+  });
+  await teste('lib/rotas-faturas.js: registrar() registra as rotas sem ler constantes que o server.js declara depois', async () => {
+    const rotas = [];
+    const appFalso = { get: (c) => rotas.push('GET ' + c), post: (c) => rotas.push('POST ' + c), use: (c) => rotas.push('USE ' + c) };
+    const lidas = [];
+    require('./lib/rotas-faturas.js').registrar(appFalso, new Proxy({ auth: () => () => {},
+      gedBucket: () => { lidas.push('gedBucket'); return 'x'; }, midiasAnalise: () => { lidas.push('midiasAnalise'); return new Set(); },
+      reivindicarJobHoje: async () => { lidas.push('reivindicarJobHoje'); return false; } },
+      { get: (t, k) => (k in t ? t[k] : () => '') }));
+    iguais(lidas.length, 0, 'leu na hora de registrar: ' + lidas.join(','));
+    ['USE /api/faturas', 'GET /faturas', 'GET /api/faturas', 'POST /api/faturas/:id/baixa', 'GET /api/fin/cadastros', 'POST /api/faturas/:id/:acao']
+      .forEach(x => verdadeiroRota(rotas.includes(x), x));
+    verdadeiroRota(rotas.indexOf('POST /api/faturas/:id/:acao') > rotas.indexOf('POST /api/faturas/:id/baixa'), 'rota genérica :acao continua depois das específicas');
+  });
   await teste('lib/jobs-backup.js: registrar() devolve os agendadores e registra as rotas', async () => {
     const rotas = [];
     const appFalso = { get: (c) => rotas.push('GET ' + c), post: (c) => rotas.push('POST ' + c) };
